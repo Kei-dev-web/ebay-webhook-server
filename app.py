@@ -1,8 +1,25 @@
 from flask import Flask, jsonify
 import requests
+from bs4 import BeautifulSoup
 import os
+import time
 
 app = Flask(__name__)
+
+def search_amazon_url(query):
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
+    search_url = f"https://www.amazon.co.jp/s?k={query.replace(' ', '+')}"
+    try:
+        res = requests.get(search_url, headers=headers, timeout=5)
+        soup = BeautifulSoup(res.text, "html.parser")
+        link = soup.select_one('a.a-link-normal.s-no-outline')
+        if link:
+            return "https://www.amazon.co.jp" + link.get("href").split("?")[0]
+    except:
+        pass
+    return ""
 
 @app.route("/webhook", methods=["GET"])
 def get_items():
@@ -21,7 +38,7 @@ def get_items():
             "RESPONSE-DATA-FORMAT": "JSON",
             "REST-PAYLOAD": "",
             "keywords": keyword,
-            "categoryId": "14024",  # Collectibles > Pens
+            "categoryId": "14024",
             "itemFilter(0).name": "SoldItemsOnly",
             "itemFilter(0).value": "true",
             "itemFilter(1).name": "LocatedIn",
@@ -39,18 +56,19 @@ def get_items():
 
         for item in items:
             title = item.get("title", [""])[0]
-            item_id = item.get("itemId", [""])[0]
             price = float(item["sellingStatus"][0]["convertedCurrentPrice"][0]["__value__"])
             currency = item["sellingStatus"][0]["convertedCurrentPrice"][0]["@currencyId"]
-            view_url = item.get("viewItemURL", [""])[0]
 
             if title not in seen_titles and currency == "USD":
                 seen_titles.add(title)
 
+                amazon_url = search_amazon_url(title)
+                time.sleep(1.5)  # アクセス制限回避のため
+
                 collected_items.append({
-                    "url": view_url,
+                    "url": amazon_url or "https://www.amazon.co.jp",  # なかった場合はトップ
                     "name": title,
-                    "cost_yen": 3000,  # 仮の仕入れ値（次フェーズでAmazon連携）
+                    "cost_yen": 3000,  # 仮の仕入れ価格（次フェーズで取得）
                     "price_usd": round(price, 2),
                     "shipping_yen": 700,
                 })
@@ -60,7 +78,7 @@ def get_items():
         if len(collected_items) >= max_entries:
             break
 
-    # 粗利益・利益率計算
+    # 利益計算
     exchange_rate = 145
     for item in collected_items:
         fee_yen = item["price_usd"] * 0.2 * exchange_rate
