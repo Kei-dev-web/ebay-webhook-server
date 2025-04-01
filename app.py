@@ -7,13 +7,13 @@ import time
 
 app = Flask(__name__)
 
-# OpenAI APIキー（環境変数 OPENAI_API_KEY で設定）
+# OpenAIのAPIキーをRenderの環境変数から取得
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def generate_product_names():
     prompt = (
         "日本で売れている、万年筆・万年筆用インク・コンバーターなどの関連商品を"
-        "英語の商品名で30個リストアップしてください。"
+        "英語の商品名で30個、1行に1つずつ箇条書きでリストアップしてください。"
     )
     try:
         response = openai.ChatCompletion.create(
@@ -25,7 +25,8 @@ def generate_product_names():
             temperature=0.7
         )
         content = response.choices[0].message.content
-        names = [line.strip("0123456789. ").strip() for line in content.split("\n") if line.strip()]
+        # GPTの出力から30行をしっかり抽出
+        names = [line.strip("0123456789.・- ").strip() for line in content.splitlines() if line.strip()]
         return names[:30]
     except Exception as e:
         print("❌ GPT error:", e)
@@ -39,12 +40,14 @@ def search_amazon_url(query):
     try:
         res = requests.get(search_url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, "html.parser")
-        link = soup.select_one('a.a-link-normal.s-no-outline')
+        link = soup.select_one('div.s-main-slot a.a-link-normal.a-text-normal')
+        if not link:
+            link = soup.select_one('a.a-link-normal.s-no-outline')
         if link:
             return "https://www.amazon.co.jp" + link.get("href").split("?")[0]
-    except:
-        pass
-    return ""
+    except Exception as e:
+        print(f"❌ Amazon search error for '{query}':", e)
+    return "https://www.amazon.co.jp"  # fallback
 
 @app.route("/webhook", methods=["GET"])
 def get_items():
@@ -56,8 +59,9 @@ def get_items():
         amazon_url = search_amazon_url(name)
         time.sleep(1.5)
 
-        cost_yen = 3000
-        price_usd = 45.0
+        # 商品ごとにランダムに価格設定（テスト用）
+        cost_yen = 2500 + hash(name) % 1500  # 2500〜3999
+        price_usd = round(35 + (hash(name[::-1]) % 2000) / 100, 2)  # $35〜$54.99
         shipping_yen = 700
 
         fee_yen = price_usd * 0.2 * exchange_rate
@@ -66,7 +70,7 @@ def get_items():
         margin = (profit / revenue_yen) * 100 if revenue_yen > 0 else 0
 
         results.append({
-            "url": amazon_url or "https://www.amazon.co.jp",
+            "url": amazon_url,
             "name": name,
             "cost_yen": cost_yen,
             "price_usd": price_usd,
