@@ -3,6 +3,7 @@ import requests
 from bs4 import BeautifulSoup
 import os
 import time
+import json
 
 app = Flask(__name__)
 
@@ -24,7 +25,7 @@ def search_amazon_url(query):
 @app.route("/webhook", methods=["GET"])
 def get_items():
     app_id = "KosukeKa-spreadsh-PRD-8b020a690-15abf660"
-    keywords = ["fountain pen"]  # ← まずは1キーワードでテスト
+    keywords = ["fountain pen"]
     max_entries = 30
     collected_items = []
     seen_titles = set()
@@ -43,22 +44,19 @@ def get_items():
             "itemFilter(1).name": "LocatedIn",
             "itemFilter(1).value": "JP",
             "paginationInput.entriesPerPage": "20",
-            # "categoryId": "14024",  ← いったんカテゴリ指定なしで
+            # "categoryId": "14024",  # コメントアウト中
         }
 
         print(f"\n🔍 Searching eBay for: {keyword}")
         response = requests.get(url, params=params)
         data = response.json()
 
-        # ✅ レスポンス全体をログに出力（Renderログで確認可能）
-        print("📦 eBay API response:")
-        print(data)
+        # ✅ レスポンス全体をログ出力
+        print("📦 eBay API response (raw):")
+        print(json.dumps(data, indent=2))
 
-        try:
-            items = data["findCompletedItemsResponse"][0]["searchResult"][0]["item"]
-        except KeyError:
-            print("❌ No items found for keyword:", keyword)
-            continue
+        # ⛔ tryブロック外して、items がなければクラッシュ → レスポンス確認のため
+        items = data["findCompletedItemsResponse"][0]["searchResult"][0]["item"]
 
         for item in items:
             title = item.get("title", [""])[0]
