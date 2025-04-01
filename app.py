@@ -24,7 +24,7 @@ def search_amazon_url(query):
 @app.route("/webhook", methods=["GET"])
 def get_items():
     app_id = "KosukeKa-spreadsh-PRD-8b020a690-15abf660"
-    keywords = ["fountain pen", "ink cartridge", "converter", "fountain pen ink", "calligraphy pen"]
+    keywords = ["fountain pen"]  # ← まずは1キーワードでテスト
     max_entries = 30
     collected_items = []
     seen_titles = set()
@@ -38,20 +38,26 @@ def get_items():
             "RESPONSE-DATA-FORMAT": "JSON",
             "REST-PAYLOAD": "",
             "keywords": keyword,
-            "categoryId": "14024",
             "itemFilter(0).name": "SoldItemsOnly",
             "itemFilter(0).value": "true",
             "itemFilter(1).name": "LocatedIn",
             "itemFilter(1).value": "JP",
             "paginationInput.entriesPerPage": "20",
+            # "categoryId": "14024",  ← いったんカテゴリ指定なしで
         }
 
+        print(f"\n🔍 Searching eBay for: {keyword}")
         response = requests.get(url, params=params)
         data = response.json()
+
+        # ✅ レスポンス全体をログに出力（Renderログで確認可能）
+        print("📦 eBay API response:")
+        print(data)
 
         try:
             items = data["findCompletedItemsResponse"][0]["searchResult"][0]["item"]
         except KeyError:
+            print("❌ No items found for keyword:", keyword)
             continue
 
         for item in items:
@@ -63,12 +69,12 @@ def get_items():
                 seen_titles.add(title)
 
                 amazon_url = search_amazon_url(title)
-                time.sleep(1.5)  # アクセス制限回避のため
+                time.sleep(1.5)
 
                 collected_items.append({
-                    "url": amazon_url or "https://www.amazon.co.jp",  # なかった場合はトップ
+                    "url": amazon_url or "https://www.amazon.co.jp",
                     "name": title,
-                    "cost_yen": 3000,  # 仮の仕入れ価格（次フェーズで取得）
+                    "cost_yen": 3000,
                     "price_usd": round(price, 2),
                     "shipping_yen": 700,
                 })
@@ -94,6 +100,3 @@ def get_items():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
-print("eBay response:")
-print(data)
