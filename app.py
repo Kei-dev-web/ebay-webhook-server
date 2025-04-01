@@ -12,8 +12,9 @@ openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 def generate_product_names():
     prompt = (
-        "日本で売れている、万年筆・万年筆用インク・コンバーターなどの関連商品を"
-        "英語の商品名で30個、1行に1つずつ箇条書きでリストアップしてください。"
+        "List 30 best-selling fountain pen related items in Japan, including fountain pens, ink, converters, etc. "
+        "Please return them in a numbered list, one per line, like:\n"
+        "1. PILOT Kakuno Fountain Pen\n2. Sailor Ink Bottle\n..."
     )
     try:
         response = openai.ChatCompletion.create(
@@ -25,12 +26,21 @@ def generate_product_names():
             temperature=0.7
         )
         content = response.choices[0].message.content
-        # GPTの出力から30行をしっかり抽出
+        print("🧾 GPT Output:\n", content)  # デバッグ用ログ
+
+        # 30行を抽出、空でない行だけ
         names = [line.strip("0123456789.・- ").strip() for line in content.splitlines() if line.strip()]
+        if len(names) < 30:
+            print(f"⚠️ Only {len(names)} items extracted. Padding with fallback items.")
+            fallback = ["PILOT Kakuno Fountain Pen", "Sailor Ink Bottle", "Platinum Preppy", "Kaweco Sport"]
+            while len(names) < 30:
+                names.append(fallback[len(names) % len(fallback)])
         return names[:30]
+
     except Exception as e:
         print("❌ GPT error:", e)
-        return ["PILOT Kakuno Fountain Pen", "Sailor Ink Bottle"]  # fallback
+        return ["PILOT Kakuno Fountain Pen", "Sailor Ink Bottle"] * 15
+
 
 def search_amazon_url(query):
     headers = {
