@@ -1,11 +1,35 @@
 from flask import Flask, jsonify
 import requests
 from bs4 import BeautifulSoup
+import openai
 import os
 import time
-import json
 
 app = Flask(__name__)
+
+# OpenAI APIキー（環境変数 OPENAI_API_KEY で設定）
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+
+def generate_product_names():
+    prompt = (
+        "日本で売れている、万年筆・万年筆用インク・コンバーターなどの関連商品を"
+        "英語の商品名で30個リストアップしてください。"
+    )
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
+        content = response.choices[0].message.content
+        names = [line.strip("0123456789. ").strip() for line in content.split("\n") if line.strip()]
+        return names[:30]
+    except Exception as e:
+        print("❌ GPT error:", e)
+        return ["PILOT Kakuno Fountain Pen", "Sailor Ink Bottle"]  # fallback
 
 def search_amazon_url(query):
     headers = {
@@ -24,37 +48,35 @@ def search_amazon_url(query):
 
 @app.route("/webhook", methods=["GET"])
 def get_items():
-    app_id = "KosukeKa-spreadsh-PRD-8b020a690-15abf660"
-    keyword = "fountain pen"
-    url = "https://svcs.ebay.com/services/search/FindingService/v1"
-    params = {
-        "OPERATION-NAME": "findCompletedItems",
-        "SERVICE-VERSION": "1.13.0",
-        "SECURITY-APPNAME": app_id,
-        "RESPONSE-DATA-FORMAT": "JSON",
-        "REST-PAYLOAD": "",
-        "keywords": keyword,
-        "itemFilter(0).name": "SoldItemsOnly",
-        "itemFilter(0).value": "true",
-        "itemFilter(1).name": "LocatedIn",
-        "itemFilter(1).value": "JP",
-        "paginationInput.entriesPerPage": "5"
-    }
+    product_names = generate_product_names()
+    results = []
+    exchange_rate = 145
 
-    print(f"\n🔍 Sending request to eBay with keyword: {keyword}")
-    response = requests.get(url, params=params)
-    try:
-        data = response.json()
-    except Exception as e:
-        print("❌ Failed to parse JSON:", e)
-        return jsonify({"error": "Failed to parse JSON", "details": str(e)})
+    for name in product_names:
+        amazon_url = search_amazon_url(name)
+        time.sleep(1.5)
 
-    # ✅ eBayレスポンスをまるごとログ出力
-    print("📦 Raw eBay API response:")
-    print(json.dumps(data, indent=2))
+        cost_yen = 3000
+        price_usd = 45.0
+        shipping_yen = 700
 
-    # ✅ レスポンス全体をクライアントにも返す
-    return jsonify(data)
+        fee_yen = price_usd * 0.2 * exchange_rate
+        revenue_yen = price_usd * 0.8 * exchange_rate
+        profit = revenue_yen - cost_yen - shipping_yen
+        margin = (profit / revenue_yen) * 100 if revenue_yen > 0 else 0
+
+        results.append({
+            "url": amazon_url or "https://www.amazon.co.jp",
+            "name": name,
+            "cost_yen": cost_yen,
+            "price_usd": price_usd,
+            "shipping_yen": shipping_yen,
+            "fee_yen": round(fee_yen),
+            "profit_yen": round(profit),
+            "margin_pct": round(margin, 1)
+        })
+
+    return jsonify(results)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
