@@ -34,5 +34,8 @@ def get_items():
 
     return jsonify(items)
 
+import os
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    port = int(os.environ.get("PORT", 10000))  # RenderがPORT環境変数を使う
+    app.run(host="0.0.0.0", port=port)
