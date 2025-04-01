@@ -40,14 +40,16 @@ def search_amazon_url(query):
     try:
         res = requests.get(search_url, headers=headers, timeout=5)
         soup = BeautifulSoup(res.text, "html.parser")
-        link = soup.select_one('div.s-main-slot a.a-link-normal.a-text-normal')
-        if not link:
-            link = soup.select_one('a.a-link-normal.s-no-outline')
-        if link:
-            return "https://www.amazon.co.jp" + link.get("href").split("?")[0]
+
+        # Amazon商品リンクの候補を広めに取得
+        for a in soup.select('a'):
+            href = a.get('href', '')
+            if '/dp/' in href:
+                return "https://www.amazon.co.jp" + href.split("?")[0]
     except Exception as e:
         print(f"❌ Amazon search error for '{query}':", e)
     return "https://www.amazon.co.jp"  # fallback
+
 
 @app.route("/webhook", methods=["GET"])
 def get_items():
